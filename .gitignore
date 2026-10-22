@@ -1,0 +1,8 @@
+# Ejecutables compilados: se publican en "Releases", no dentro del repositorio
+dist/
+*.exe
+*.pdb
+
+# Archivos que crea Windows
+Thumbs.db
+desktop.ini
