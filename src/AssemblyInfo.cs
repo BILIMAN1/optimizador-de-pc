@@ -9,8 +9,8 @@ using System.Runtime.Versioning;
 [assembly: AssemblyDescription("Libera espacio en el disco y controla los programas que saturan el PC")]
 [assembly: AssemblyCopyright("Desarrollada por Biliman")]
 [assembly: AssemblyCompany("Biliman")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
 
 // Permite que las pruebas automáticas (PruebasOptimizador.exe) usen las clases internas
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("PruebasOptimizador")]

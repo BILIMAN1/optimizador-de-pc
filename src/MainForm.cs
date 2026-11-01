@@ -49,7 +49,7 @@ namespace OptimizadorPC
         /// <summary>Página que se estaba viendo (para reabrir en la misma tras cambiar de tema).</summary>
         public string PaginaActual { get { return actual; } }
 
-        public const string Version = "1.0";
+        public const string Version = "1.1";
 
         private readonly Panel raiz, barra, contenedor;
         private readonly Dictionary<string, PaginaBase> paginas = new Dictionary<string, PaginaBase>();
