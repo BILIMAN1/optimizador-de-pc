@@ -694,8 +694,7 @@ namespace OptimizadorPC
                 {
                     case "temp_usuario":
                     case "temp_windows": temp = true; break;
-                    case "windows_update":
-                    case "entrega": wu = true; break;
+                    case "windows_update": wu = true; break;
                     case "errores": err = true; break;
                     case "miniaturas": mini = true; break;
                     default: otros.Add(Minuscula(o.Nombre)); break;

@@ -641,6 +641,7 @@ namespace OptimizadorPC
 
                 List<string> quitadas = new List<string>();
                 List<string> fallos = new List<string>();
+                List<Resto> restos = new List<Resto>();
                 IProgress<string> progreso = new Progress<string>(delegate(string t)
                 {
                     if (!IsDisposed && quitando) lblContador.Text = t;
@@ -652,7 +653,12 @@ namespace OptimizadorPC
                         AppInstalada a = elegidas[i];
                         progreso.Report("Quitando " + a.Nombre + "…  (" + (i + 1) + " de " + elegidas.Count + ")");
                         string error = QuitarApp(a);
-                        if (error == null) quitadas.Add(a.Nombre);
+                        if (error == null)
+                        {
+                            quitadas.Add(a.Nombre);
+                            progreso.Report("Buscando restos de " + a.Nombre + "…");
+                            restos.AddRange(RestosDeApp(a));
+                        }
                         else fallos.Add(a.Nombre + ": " + error);
                     }
                 });
@@ -660,10 +666,25 @@ namespace OptimizadorPC
 
                 quitando = false;
                 colMarca.ReadOnly = false;
+                string nombreQuitadas = quitadas.Count == 1 ? quitadas[0] : quitadas.Count + " apps";
+                if (restos.Count > 0)
+                {
+                    // Se enseñan los restos para elegir qué borrar y después un informe de lo borrado
+                    List<Resto> elegidos = VentanaRestos.Elegir(FindForm(), nombreQuitadas, restos);
+                    if (elegidos != null)
+                    {
+                        ResultadoBorradoRestos res = await Task.Run(() => Residuos.Borrar(elegidos, nombreQuitadas));
+                        if (IsDisposed) return;
+                        VentanaRestos.Informe(FindForm(), nombreQuitadas, elegidos, res.CarpetaRespaldo);
+                    }
+                }
                 if (fallos.Count == 0)
                 {
-                    Dialogo.Exito(FindForm(), "Listo",
-                        quitadas.Count == 1 ? "Se quitó " + quitadas[0] + "." : "Se quitaron " + quitadas.Count + " apps.");
+                    if (restos.Count == 0)
+                    {
+                        Dialogo.Exito(FindForm(), "Listo",
+                            (quitadas.Count == 1 ? "Se quitó " + quitadas[0] : "Se quitaron " + quitadas.Count + " apps") + " y no dejaron restos.");
+                    }
                 }
                 else
                 {
@@ -752,30 +773,45 @@ namespace OptimizadorPC
                 Util.Log("Apps: no se pudo quitar '" + a.Nombre + "' (" + completo + "), código " + r.Codigo + ": " + motivo);
                 return MotivoAmigable(motivo, r.Codigo);
             }
-            BorrarDatosApp(a);
             return null;
         }
 
-        /// <summary>Borra la carpeta de datos que deja la app en %LOCALAPPDATA%\Packages (va a la papelera).</summary>
-        private static void BorrarDatosApp(AppInstalada a)
+        /// <summary>
+        /// Lo que deja una app quitada: su carpeta de datos en %LOCALAPPDATA%\Packages y su acceso de
+        /// ejecución en WindowsApps. No se borra nada aquí: se enseña al usuario para que elija. Bloquea.
+        /// </summary>
+        private static List<Resto> RestosDeApp(AppInstalada a)
         {
+            List<Resto> l = new List<Resto>();
             try
             {
-                if (string.IsNullOrEmpty(a.Familia) || a.Familia.IndexOfAny(new[] { '\\', '/', ':' }) >= 0 || a.Familia.Contains("..")) return;
-                string paquetes = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages");
-                string carpeta = Path.Combine(paquetes, a.Familia);
-                if (!Directory.Exists(carpeta)) return;
-                // Si la app sigue instalada (otra versión), sus datos no se tocan
+                if (string.IsNullOrEmpty(a.Familia) || a.Familia.IndexOfAny(new[] { '\\', '/', ':' }) >= 0 || a.Familia.Contains("..")) return l;
+                // Si la app sigue instalada (otra versión), sus datos no son restos
                 ResultadoProceso r = Util.EjecutarPowerShell("if (Get-AppxPackage -Name " + Util.ComillasPS(a.Paquete) + ") { L 'sigue' } else { L 'no' }", 60000);
-                if (r.Salida.Contains("sigue") || !r.Salida.Contains("no")) return;
-                Exception error = Residuos.MoverAPapelera(carpeta, true);
-                Util.Log(error == null ? "Apps: datos de '" + a.Nombre + "' a la papelera (" + carpeta + ")"
-                                       : "Apps: no se pudieron borrar todos los datos de '" + a.Nombre + "': " + error.Message);
+                if (r.Salida.Contains("sigue") || !r.Salida.Contains("no")) return l;
+                string lad = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+                string[,] sitios =
+                {
+                    { Path.Combine(Path.Combine(lad, "Packages"), a.Familia), "Datos guardados de " + a.Nombre },
+                    { Path.Combine(lad, @"Microsoft\WindowsApps\" + a.Familia), "Acceso de ejecución de " + a.Nombre }
+                };
+                for (int i = 0; i < sitios.GetLength(0); i++)
+                {
+                    string ruta = sitios[i, 0];
+                    if (!Directory.Exists(ruta) || Util.EsRutaProtegida(ruta)) continue;
+                    Resto resto = new Resto();
+                    resto.Tipo = TipoResto.Carpeta;
+                    resto.Ruta = ruta;
+                    resto.Motivo = sitios[i, 1];
+                    resto.Tamano = Util.TamanoCarpeta(ruta, System.Threading.CancellationToken.None);
+                    l.Add(resto);
+                }
             }
             catch (Exception ex)
             {
-                Util.Log("Apps: error al borrar los datos de '" + a.Nombre + "': " + ex.Message);
+                Util.Log("Apps: error al buscar los restos de '" + a.Nombre + "': " + ex.Message);
             }
+            return l;
         }
 
         private static string MotivoAmigable(string motivo, int codigo)

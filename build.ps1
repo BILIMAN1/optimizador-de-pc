@@ -6,16 +6,11 @@
 .PARAMETER Prueba
     Compila la versión de pruebas (no pide administrador) en dist\OptimizadorPC_prueba.exe.
 
-.PARAMETER Solo
-    Compila usando solo las páginas reales indicadas (p. ej. "PaginaLimpieza,PaginaResumen") y las
-    páginas provisionales de 'stubs' para el resto. Sirve para comprobar páginas aunque las demás estén a medias.
-
 .PARAMETER Salida
     Ruta del .exe de salida (opcional).
 #>
 param(
     [switch]$Prueba,
-    [string]$Solo,
     [string]$Salida
 )
 
@@ -25,15 +20,7 @@ $csc = Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
 if (-not (Test-Path $csc)) { $csc = Join-Path $env:SystemRoot 'Microsoft.NET\Framework\v4.0.30319\csc.exe' }
 if (-not (Test-Path $csc)) { throw 'No se encontró csc.exe de .NET Framework 4.' }
 
-$soloLista = @($Solo -split '[,;\s]+' | Where-Object { $_ })
-$fuentes = @(Get-ChildItem (Join-Path $raiz 'src\*.cs') | ForEach-Object FullName)
-foreach ($p in Get-ChildItem (Join-Path $raiz 'src\Paginas\*.cs')) {
-    if ($soloLista.Count -gt 0 -and $soloLista -notcontains $p.BaseName) {
-        $stub = Join-Path $raiz "stubs\$($p.BaseName).cs"
-        if (Test-Path $stub) { $fuentes += $stub; continue }
-    }
-    $fuentes += $p.FullName
-}
+$fuentes = @(Get-ChildItem (Join-Path $raiz 'src') -Filter *.cs -Recurse | ForEach-Object FullName)
 
 $manifiesto = Join-Path $raiz $(if ($Prueba) { 'recursos\app_prueba.manifest' } else { 'recursos\app.manifest' })
 $icono = Join-Path $raiz 'recursos\icono.ico'

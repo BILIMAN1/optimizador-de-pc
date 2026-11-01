@@ -19,6 +19,10 @@ namespace OptimizadorPC
         public string Motivo;
         public bool Marcado = true;
 
+        /// <summary>Tras borrar: true si se borró, y el texto para el informe ("A la papelera", "No se pudo: en uso"...).</summary>
+        public bool Borrado;
+        public string Resultado;
+
         internal RegistryHive Colmena;
         internal RegistryView Vista;
         internal string Subclave;
@@ -537,6 +541,7 @@ namespace OptimizadorPC
                             b.DeleteSubKeyTree(r.Subclave, false);
                         }
                         Util.Log("Restos: borrada la clave " + r.Ruta + " (copia en " + archivo + ")");
+                        r.Resultado = "Borrada (con copia de seguridad)";
                     }
                     else
                     {
@@ -550,18 +555,30 @@ namespace OptimizadorPC
                         Util.Log("Restos: a la papelera " + r.Ruta);
                         // Si la carpeta del editor se queda vacía, también se quita
                         BorrarPadreVacio(padre);
+                        r.Resultado = "Enviado a la papelera";
                     }
+                    r.Borrado = true;
                     res.Borrados++;
                 }
                 catch (Exception ex)
                 {
                     res.Fallidos++;
+                    r.Borrado = false;
+                    r.Resultado = "No se pudo: " + MotivoLegible(ex);
                     res.Errores.Add(r.Ruta + ": " + ex.Message);
                     Util.Log("Restos: no se pudo borrar " + r.Ruta + ": " + ex.Message);
                 }
             }
             Historial.Anotar("Restos de programa", string.IsNullOrEmpty(programa) ? "Restos" : programa, res.Bytes);
             return res;
+        }
+
+        private static string MotivoLegible(Exception ex)
+        {
+            if (ex is UnauthorizedAccessException || ex is System.Security.SecurityException) return "sin permiso (abre la app como administrador)";
+            if (ex is IOException) return "está en uso (cierra el programa o reinicia y vuelve a intentarlo)";
+            if (ex is OperationCanceledException) return "cancelado";
+            return ex.Message;
         }
 
         private static void BorrarPadreVacio(string padre)

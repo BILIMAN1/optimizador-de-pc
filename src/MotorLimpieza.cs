@@ -7,7 +7,7 @@ using System.Threading;
 
 namespace OptimizadorPC
 {
-    enum TipoEspecial { Ninguno, Papelera, EntregaOptimizada }
+    enum TipoEspecial { Ninguno, Papelera }
 
     /// <summary>Una categoría de archivos basura que se puede medir y limpiar.</summary>
     class Objetivo
@@ -58,11 +58,6 @@ namespace OptimizadorPC
             wu.Servicios = new[] { "wuauserv", "bits" };
             l.Add(wu);
 
-            Objetivo entrega = Nuevo("entrega", "Optimización de distribución", "Copias de actualizaciones compartidas con otros PCs",
-                true, true, new[] { Path.Combine(win, @"ServiceProfiles\NetworkService\AppData\Local\Microsoft\Windows\DeliveryOptimization\Cache") }, 0);
-            entrega.Especial = TipoEspecial.EntregaOptimizada;
-            l.Add(entrega);
-
             l.Add(Nuevo("errores", "Informes de errores", "Archivos que se crean cuando un programa o Windows se cuelga",
                 false, true, new[]
                 {
@@ -98,13 +93,6 @@ namespace OptimizadorPC
                 }, 0);
             discord.ProcesosQueBloquean = new[] { "Discord" };
             l.Add(discord);
-
-            l.Add(Nuevo("shaders", "Caché de shaders (GPU)", "Se regenera; los juegos pueden ir algo más lentos la primera vez",
-                false, false, new[]
-                {
-                    Path.Combine(lad, "D3DSCache"), Path.Combine(lad, @"NVIDIA\DXCache"), Path.Combine(lad, @"NVIDIA\GLCache"),
-                    Path.Combine(lad, @"AMD\DxCache"), Path.Combine(lad, @"AMD\DxcCache"), Path.Combine(lad, @"AMD\GLCache")
-                }, 0));
 
             l.Add(Nuevo("drivers", "Instaladores de drivers", "Restos de instalar drivers de NVIDIA y AMD",
                 false, false, new[]
@@ -252,21 +240,6 @@ namespace OptimizadorPC
                 Historial.Anotar(Historial.Origen, o.Nombre, liberado);
                 o.Tamano = despues;
                 return liberado;
-            }
-
-            if (o.Especial == TipoEspecial.EntregaOptimizada)
-            {
-                // Windows tiene su propio comando para esta caché; si no existe, se borran los archivos a mano.
-                long antes = Medir(o, ct);
-                Util.EjecutarPowerShell("Delete-DeliveryOptimizationCache -Force", 180000);
-                long despues = Medir(o, ct);
-                liberado = Math.Max(0, antes - despues);
-                if (despues <= 0)
-                {
-                    Util.Log(string.Format("Limpieza '{0}': {1}", o.Nombre, Util.FormatoTamano(liberado)));
-                    Historial.Anotar(Historial.Origen, o.Nombre, liberado);
-                    return liberado;
-                }
             }
 
             List<ServiceController> parados = new List<ServiceController>();

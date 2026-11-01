@@ -21,6 +21,7 @@ namespace OptimizadorPC
     static class Pruebas
     {
         static StreamWriter informe;
+        static List<Resto> ultimaEleccion;
         static int aciertos, fallos;
         static string raiz;
         static readonly List<string> dialogos = new List<string>();
@@ -57,7 +58,8 @@ namespace OptimizadorPC
             {
                 Escribir("      [restos encontrados: " + restos.Count + "]");
                 foreach (Resto r in restos) Escribir("        " + (r.Marcado ? "[x] " : "[ ] ") + r.Tipo + "  " + r.Ruta + "  (" + r.Motivo + ")");
-                return restos.FindAll(x => x.Marcado);
+                ultimaEleccion = restos.FindAll(x => x.Marcado);
+                return ultimaEleccion;
             };
 
             Form host = new Form();
@@ -199,7 +201,6 @@ namespace OptimizadorPC
             await PruebaDesinstalarForzado(host);
             await PruebaPaginaArchivos(host);
             await PruebaPaginaApps(host);
-            PruebaSensorAlmacenamiento();
             await PruebaPaginaResumen(host);
             await PruebaPaginaHerramientas(host);
             await PruebaHistorial(host);
@@ -753,9 +754,17 @@ namespace OptimizadorPC
             string desinstalador = Path.Combine(inst, "desinstalar.cmd");
             if (conDesinstalador)
             {
-                // Como un desinstalador real "perezoso": borra el .exe y su entrada, pero deja configuración y datos
+                // Como un desinstalador real de tipo NSIS: se copia a la carpeta temporal (Un_A.exe), se cierra al
+                // momento y la copia termina el trabajo unos segundos después. Borra el .exe y su entrada, pero deja
+                // configuración y datos (los restos que la app tiene que encontrar).
+                string tarea = Path.Combine(raiz, id + "_tarea.cmd");
+                Directory.CreateDirectory(raiz);
+                File.WriteAllText(tarea,
+                    "@echo off\r\nping -n 7 127.0.0.1 >nul\r\ndel /f /q \"" + Path.Combine(inst, id + ".exe") + "\"\r\n" +
+                    "reg delete \"HKCU\\" + clave + "\" /f >nul\r\n", Encoding.ASCII);
                 File.WriteAllText(desinstalador,
-                    "@echo off\r\ndel /f /q \"" + Path.Combine(inst, id + ".exe") + "\"\r\nreg delete \"HKCU\\" + clave + "\" /f >nul\r\n", Encoding.ASCII);
+                    "@echo off\r\ncopy /y \"%SystemRoot%\\System32\\cmd.exe\" \"%TEMP%\\Un_A.exe\" >nul\r\n" +
+                    "start \"\" /min \"%TEMP%\\Un_A.exe\" /c \"" + tarea + "\"\r\n", Encoding.ASCII);
             }
             using (RegistryKey k = Registry.CurrentUser.CreateSubKey(clave))
             {
@@ -810,7 +819,7 @@ namespace OptimizadorPC
 
         static async Task PruebaDesinstalarConRestos(Form host)
         {
-            Seccion("10. Pantalla Programas: desinstalar y borrar restos (programa de prueba)");
+            Seccion("10. Programas: desinstalador que se copia a Temp (tipo NSIS), elegir restos e informe");
             string lad = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string ad = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             const string id = "ProgramaPruebaOPC";
@@ -839,6 +848,10 @@ namespace OptimizadorPC
                 Comprobar("Resto borrado: carpeta en AppData\\Local", !Directory.Exists(Path.Combine(lad, id)), null);
                 Comprobar("Resto borrado: clave del registro", !ClaveExiste(RegistryHive.CurrentUser, RegistryView.Registry64, @"Software\" + id), null);
                 Comprobar("Resto borrado: acceso directo roto", !File.Exists(lnk), null);
+                bool informeCompleto = ultimaEleccion != null && ultimaEleccion.Count > 0 &&
+                    ultimaEleccion.TrueForAll(x => x.Borrado && !string.IsNullOrEmpty(x.Resultado));
+                Comprobar("El informe final dice qué pasó con cada resto", informeCompleto,
+                    ultimaEleccion == null ? null : string.Join(" | ", ultimaEleccion.ConvertAll(x => x.Resultado).ToArray()));
                 int respaldosDespues = Directory.Exists(respaldos) ? Directory.GetDirectories(respaldos).Length : 0;
                 Comprobar("Guardó copia .reg del registro antes de borrar", respaldosDespues > respaldosAntes, null);
                 Comprobar("NO tocó el otro programa instalado", Directory.Exists(otro) &&
@@ -937,43 +950,6 @@ namespace OptimizadorPC
             }
             Comprobar("Nunca ofrece quitar la Tienda, la Calculadora ni componentes", !algunaProtegida, null);
             p.Visible = false;
-        }
-
-        static void PruebaSensorAlmacenamiento()
-        {
-            Seccion("14. Sensor de almacenamiento (se deja como estaba)");
-            const string ruta = @"Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy";
-            string[] nombres = { "01", "2048", "04", "08", "256" };
-            Dictionary<string, object> original = new Dictionary<string, object>();
-            using (RegistryKey k = Registry.CurrentUser.CreateSubKey(ruta))
-            {
-                foreach (string n in nombres) original[n] = k.GetValue(n);
-            }
-            try
-            {
-                Llamar(typeof(PaginaHerramientas), "EscribirSensor", true);
-                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(ruta))
-                {
-                    Comprobar("Activar el Sensor de almacenamiento", Convert.ToInt32(k.GetValue("01")) == 1 && Convert.ToInt32(k.GetValue("2048")) == 7, null);
-                }
-                Llamar(typeof(PaginaHerramientas), "EscribirSensor", false);
-                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(ruta))
-                {
-                    Comprobar("Desactivar el Sensor de almacenamiento", Convert.ToInt32(k.GetValue("01")) == 0, null);
-                }
-            }
-            catch (Exception ex) { Comprobar("Sensor de almacenamiento", false, ex.Message); }
-            finally
-            {
-                using (RegistryKey k = Registry.CurrentUser.CreateSubKey(ruta))
-                {
-                    foreach (string n in nombres)
-                    {
-                        if (original[n] == null) k.DeleteValue(n, false);
-                        else k.SetValue(n, original[n], RegistryValueKind.DWord);
-                    }
-                }
-            }
         }
 
         static async Task PruebaPaginaResumen(Form host)

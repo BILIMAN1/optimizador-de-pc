@@ -21,15 +21,15 @@ administrador (los necesita para limpiar los archivos de Windows).
 |---|---|
 | **Resumen** | Uso del disco y la RAM, cuánto puedes liberar, botón *Optimizar ahora* y recomendaciones. |
 | **Modo juego** | Cierra programas de fondo, activa el Modo de juego de Windows y sube el plan de energía. Nunca cierra Discord, navegadores, Riot/Vanguard, Steam ni tus juegos. Al desactivarlo lo deja todo como estaba. |
-| **Liberar espacio** | Temporales, caché de Windows Update, informes de errores, miniaturas, cachés de navegadores, Discord y shaders, restos de drivers y papelera. Tú eliges qué se borra. |
+| **Liberar espacio** | Temporales, caché de Windows Update, informes de errores, miniaturas, cachés de navegadores y Discord, restos de drivers y papelera. Tú eliges qué se borra. |
 | **Archivos grandes** | Encuentra lo que más ocupa en tus carpetas y lo manda a la papelera. |
 | **Duplicados** | Archivos idénticos byte a byte (huella SHA-256). Siempre conserva una copia. |
-| **Programas** | Desinstala programas y después busca sus restos (carpetas, registro y accesos directos), como Geek Uninstaller o Revo. Guarda una copia `.reg` antes de borrar nada del registro. |
-| **Apps basura** | Quita apps preinstaladas de la Tienda por completo (también la copia que Windows usa para reinstalarlas). |
+| **Programas** | Desinstala programas, espera a que el desinstalador termine de verdad y busca sus restos (carpetas, registro y accesos directos), como Geek Uninstaller o Revo. Tú eliges qué restos borrar y al final ves un informe con cada uno (✓ borrado / ✗ no se pudo). Guarda una copia `.reg` antes de borrar nada del registro. |
+| **Apps basura** | Quita apps de la Tienda por completo (también la copia que Windows usa para reinstalarlas) y te enseña sus restos para elegir qué borrar. |
 | **Inicio de Windows** | Activa o apaga lo que arranca con el PC, igual que el Administrador de tareas (reversible). |
 | **Procesos** | Lo que consume RAM y CPU ahora mismo. Las partes de Windows están protegidas. |
 | **Diagnóstico** | Velocidad de arranque y qué lo frena, actualizaciones pendientes y antigüedad de los controladores. Solo lee. |
-| **Herramientas** | Punto de restauración, limpieza profunda (DISM), hibernación, Sensor de almacenamiento, limpieza semanal automática y accesos directos. |
+| **Herramientas** | Punto de restauración, limpieza profunda (DISM), hibernación, limpieza semanal automática, accesos directos y sonidos. |
 | **Historial** | Todo el espacio que has liberado con la app. |
 
 Temas: **Halloween** 🎃 y **normal**, con sonidos y animaciones propios. Hay algo más escondido para quien sepa buscar. 👀
@@ -76,8 +76,7 @@ la tarea semanal y DISM (todo se deja como estaba).
 src/            Núcleo: tema, controles, motor de limpieza, restos, modo juego, duplicados, diagnóstico...
 src/Paginas/    Una clase por sección de la app
 recursos/       Icono y manifiestos (administrador / pruebas)
-pruebas/        Pruebas automáticas y generador de variantes de tema
-stubs/          Páginas vacías para compilar una sección suelta (build.ps1 -Solo)
+pruebas/        Pruebas automáticas
 ```
 
 ## Licencia

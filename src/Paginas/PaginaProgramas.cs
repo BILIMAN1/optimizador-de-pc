@@ -721,6 +721,7 @@ namespace OptimizadorPC
 
                 // Se guarda lo que sabemos del programa ANTES de desinstalarlo: luego su entrada desaparece
                 DatosPrograma datos = await Task.Run(() => Residuos.Leer(p.Colmena, p.Vista, p.Subclave));
+                DateTime inicio = DateTime.Now;
                 ResultadoLanzar r = await Task.Run(() => AbrirDesinstalador(p));
                 if (IsDisposed) return;
 
@@ -742,8 +743,13 @@ namespace OptimizadorPC
                         "y podrás elegir qué borrar. También desaparecerá de la lista de programas.", "Buscar restos", true);
                 }
 
-                // Un momento para que Windows termine de actualizar el registro
-                if (r.Abierto) await Task.Delay(1500);
+                // Muchos desinstaladores se copian a una carpeta temporal y cierran la ventana original al
+                // momento: se espera mientras quede alguno trabajando y hasta que el programa desaparezca.
+                if (r.Abierto)
+                {
+                    lblSeleccion.Text = "Esperando a que el desinstalador de " + nombre + " termine…";
+                    await Task.Run(() => EsperarDesinstalacion(p, inicio));
+                }
                 if (IsDisposed) return;
                 await CargarAsync();
                 if (IsDisposed) return;
@@ -770,6 +776,51 @@ namespace OptimizadorPC
             }
         }
 
+        /// <summary>
+        /// Espera (como mucho 30 minutos) a que el programa desaparezca de la lista de instalados.
+        /// Si ya no queda ningún proceso de desinstalación abierto y el programa sigue ahí unos segundos,
+        /// se da por terminado (el usuario canceló o el desinstalador falló). Bloquea.
+        /// </summary>
+        private static bool EsperarDesinstalacion(Programa p, DateTime inicio)
+        {
+            string temp = Path.GetTempPath().TrimEnd('\\');
+            int sinDesinstalador = 0;
+            DateTime limite = DateTime.Now.AddMinutes(30);
+            while (DateTime.Now < limite)
+            {
+                if (LeerComandoActual(p) == null)
+                {
+                    System.Threading.Thread.Sleep(1500);   // que Windows termine de escribir el registro
+                    return true;
+                }
+                if (HayDesinstaladorTrabajando(inicio, temp)) sinDesinstalador = 0;
+                else if (++sinDesinstalador >= 6) return false;
+                System.Threading.Thread.Sleep(1000);
+            }
+            return false;
+        }
+
+        // Procesos abiertos después de pulsar Desinstalar que parecen un desinstalador (o salen de la carpeta temporal)
+        private static bool HayDesinstaladorTrabajando(DateTime inicio, string temp)
+        {
+            foreach (Process pr in Process.GetProcesses())
+            {
+                try
+                {
+                    if (pr.StartTime < inicio.AddSeconds(-2)) continue;
+                    string n = pr.ProcessName.ToLowerInvariant();
+                    if (n.Contains("unins") || n.Contains("uninst") || n.StartsWith("au_") || n.StartsWith("un_") ||
+                        n.StartsWith("_iu") || n.Contains("setup") || n.Contains("install") || n == "msiexec") return true;
+                    string ruta = null;
+                    try { ruta = pr.MainModule.FileName; } catch { }
+                    if (ruta != null && ruta.StartsWith(temp, StringComparison.OrdinalIgnoreCase)) return true;
+                }
+                catch { }
+                finally { pr.Dispose(); }
+            }
+            return false;
+        }
+
         /// <summary>Busca lo que dejó el programa, deja elegir qué borrar y lo borra.</summary>
         private async Task BuscarYBorrarRestos(DatosPrograma datos, bool forzado)
         {
@@ -794,21 +845,10 @@ namespace OptimizadorPC
             ResultadoBorradoRestos res = await Task.Run(() => Residuos.Borrar(elegidos, datos.Nombre));
             if (IsDisposed) return;
 
-            if (res.Fallidos == 0)
-            {
-                Dialogo.Exito(FindForm(), "Restos borrados",
-                    "Se borraron " + res.Borrados + (res.Borrados == 1 ? " resto" : " restos") + " de " + datos.Nombre +
-                    (res.Bytes > 0 ? " (" + Util.FormatoTamano(res.Bytes) + ")" : "") + ". Las carpetas están en la papelera" +
-                    (res.CarpetaRespaldo != null ? " y hay una copia del registro en la carpeta de respaldos de la app." : "."));
-            }
-            else
-            {
-                System.Text.StringBuilder sb = new System.Text.StringBuilder();
-                sb.Append("Se borraron ").Append(res.Borrados).Append(", pero estos no:\n\n");
-                for (int i = 0; i < res.Errores.Count && i < 6; i++) sb.Append("•  ").Append(Util.Recortar(res.Errores[i], 110)).Append('\n');
-                sb.Append("\nSi alguno está en uso, cierra el programa o reinicia el PC y vuelve a intentarlo.");
-                Dialogo.Error(FindForm(), "Algunos restos no se pudieron borrar", sb.ToString());
-            }
+            // Informe con cada resto: lo que se borró (✓) y lo que no (✗) con el motivo
+            VentanaRestos.Informe(FindForm(), datos.Nombre, elegidos, res.CarpetaRespaldo);
+            aviso = res.Fallidos == 0 ? datos.Nombre + " desinstalado por completo: se borraron " + res.Borrados + " restos."
+                                      : "Quedaron " + res.Fallidos + " restos de " + datos.Nombre + " que no se pudieron borrar.";
             if (forzado && !IsDisposed) await CargarAsync();
         }
 

@@ -12,11 +12,10 @@ using Microsoft.Win32;
 
 namespace OptimizadorPC
 {
-    /// <summary>Herramientas avanzadas: punto de restauración, DISM, hibernación, Sensor de almacenamiento, tarea semanal...</summary>
+    /// <summary>Herramientas avanzadas: punto de restauración, DISM, hibernación, tarea semanal, accesos directos y sonidos.</summary>
     class PaginaHerramientas : PaginaBase
     {
         private const string NombreTarea = "OptimizadorPC_LimpiezaSemanal";
-        private const string ClaveSensor = @"Software\Microsoft\Windows\CurrentVersion\StorageSense\Parameters\StoragePolicy";
         private const string SinAdmin = "Necesita permisos de administrador";
 
         private static readonly CultureInfo Es = CultureInfo.GetCultureInfo("es-ES");
@@ -25,22 +24,17 @@ namespace OptimizadorPC
         private class Estados
         {
             public long Hiber = -1;
-            public int Sensor = -1, Frecuencia = -1;
             public bool Tarea;
             public string RutaTarea;
-            public bool WindowsOld;
-            public long LogTamano = -1;
-            public DateTime LogFecha;
         }
 
         private readonly Panel desplazable, lienzo;
         private readonly List<TarjetaHerramienta> tarjetas = new List<TarjetaHerramienta>();
-        private TarjetaHerramienta tPunto, tDism, tHiber, tSensor, tSemanal, tLiberador, tRegistro;
+        private TarjetaHerramienta tPunto, tDism, tHiber, tSemanal;
         private Boton btnPunto, btnDism, btnHiber, btnProgramar, btnQuitar;
-        private Interruptor swSensor;
 
         private bool refrescando, pendiente, reordenando, otraVez;
-        private bool ocupadoPunto, ocupadoDism, ocupadoHiber, ocupadoSensor, ocupadoSemanal;
+        private bool ocupadoPunto, ocupadoDism, ocupadoHiber, ocupadoSemanal;
         private bool hiberActiva;
         private long tamHiber = -1;
         private int lote;
@@ -79,30 +73,12 @@ namespace OptimizadorPC
             tHiber = Nueva(Tema.IcoReloj, "Hibernación", "Comprobando el archivo de hibernación…");
             btnHiber = Agregar(tHiber, "Desactivar", EstiloBoton.Peligro, null, CambiarHibernacion);
 
-            tSensor = Nueva(Tema.IcoDisco, "Sensor de almacenamiento",
-                "El limpiador automático de Windows: borra los archivos temporales y lo que lleva más de 30 días en la papelera.");
-            swSensor = new Interruptor();
-            swSensor.Enabled = false;
-            swSensor.CambioEstado += SensorCambiado;
-            tSensor.PonerExtra(swSensor);
-            Agregar(tSensor, "Abrir en Configuración", EstiloBoton.Fantasma, null, delegate
-            {
-                if (!Util.Abrir("ms-settings:storagesense", null))
-                {
-                    Dialogo.Error(FindForm(), "No se pudo abrir Configuración", "Ábrela tú en Inicio > Configuración > Sistema > Almacenamiento.");
-                }
-            });
-
             tSemanal = Nueva(Tema.IcoPlay, "Limpieza automática semanal",
                 "El optimizador limpiará lo recomendado cada domingo a las 12:00 (o al encender el PC si estaba apagado).");
             tSemanal.PonerNotas(Application.ExecutablePath, "Si mueves la app a otra carpeta, vuelve a programarla.");
             btnProgramar = Agregar(tSemanal, "Programar", EstiloBoton.Primario, null, ProgramarTarea);
             btnQuitar = Agregar(tSemanal, "Quitar", EstiloBoton.Secundario, null, QuitarTarea);
             btnQuitar.Visible = false;
-
-            tLiberador = Nueva(Tema.IcoHerramientas, "Liberador de espacio de Windows",
-                "La herramienta clásica de Windows. Sirve para borrar Windows.old (instalaciones anteriores, suele ocupar 10–30 GB).");
-            Agregar(tLiberador, "Abrir", EstiloBoton.Secundario, null, AbrirLiberador);
 
             tAccesos = Nueva(Tema.IcoAccesoDirecto, "Accesos directos",
                 "Pon el optimizador en el Escritorio y en el menú Inicio para abrirlo sin buscar la carpeta.");
@@ -121,10 +97,6 @@ namespace OptimizadorPC
             };
             tSonidos.PonerExtra(swSonidos);
             Agregar(tSonidos, "Probar sonido", EstiloBoton.Fantasma, Tema.IcoPlay, delegate { Sonidos.Probar(); });
-
-            tRegistro = Nueva(Tema.IcoInfo, "Registro de la app", "Todo lo que hace el optimizador queda anotado aquí.");
-            tRegistro.PonerNotas(Util.ArchivoLog, "");
-            Agregar(tRegistro, "Abrir registro", EstiloBoton.Fantasma, null, AbrirRegistro);
         }
 
         // ------------------------------------------------------------------ accesos directos
@@ -285,11 +257,8 @@ namespace OptimizadorPC
             btnDism.Enabled = admin;
             tHiber.PonerEstado("Comprobando…", Tema.TextoTenue);
             btnHiber.Enabled = false;
-            tSensor.PonerEstado("Comprobando…", Tema.TextoTenue);
             tSemanal.PonerEstado("Comprobando…", Tema.TextoTenue);
             btnProgramar.Enabled = false;
-            tLiberador.PonerEstado("Comprobando…", Tema.TextoTenue);
-            tRegistro.PonerEstado("Comprobando…", Tema.TextoTenue);
         }
 
         public override void AlMostrar()
@@ -333,24 +302,6 @@ namespace OptimizadorPC
         {
             Estados e = new Estados();
             e.Hiber = Sistema.TamanoArchivoRaiz("hiberfil.sys");
-            try
-            {
-                using (RegistryKey k = Registry.CurrentUser.OpenSubKey(ClaveSensor))
-                {
-                    if (k == null)
-                    {
-                        e.Sensor = 0;
-                    }
-                    else
-                    {
-                        object v = k.GetValue("01");
-                        e.Sensor = v is int && (int)v == 1 ? 1 : 0;
-                        object f = k.GetValue("2048");
-                        if (f is int) e.Frecuencia = (int)f;
-                    }
-                }
-            }
-            catch { e.Sensor = -1; }
 
             ResultadoProceso r = Util.EjecutarProceso(Util.RutaSistema("schtasks.exe"), "/Query /TN " + NombreTarea, 20000);
             e.Tarea = r.Ok;
@@ -362,18 +313,6 @@ namespace OptimizadorPC
                     "if ($t) { L ($t.Actions | Select-Object -First 1).Execute }", 30000);
                 if (filas.Count > 0 && filas[0].Length > 0) e.RutaTarea = filas[0][0].Trim().Trim('"');
             }
-
-            try { e.WindowsOld = Directory.Exists(Path.Combine(Sistema.UnidadSistema, "Windows.old")); } catch { }
-            try
-            {
-                FileInfo fi = new FileInfo(Util.ArchivoLog);
-                if (fi.Exists)
-                {
-                    e.LogTamano = fi.Length;
-                    e.LogFecha = fi.LastWriteTime;
-                }
-            }
-            catch { }
             return e;
         }
 
@@ -419,23 +358,6 @@ namespace OptimizadorPC
                     btnHiber.Enabled = admin;
                 }
 
-                // Sensor de almacenamiento (es del usuario: no hace falta administrador)
-                if (!ocupadoSensor)
-                {
-                    if (e.Sensor < 0)
-                    {
-                        swSensor.Enabled = false;
-                        tSensor.PonerEstado("No se pudo leer el estado", Tema.TextoTenue);
-                    }
-                    else
-                    {
-                        swSensor.Establecer(e.Sensor == 1);
-                        swSensor.Enabled = true;
-                        if (e.Sensor == 1) tSensor.PonerEstado("Activado · " + Frecuencia(e.Frecuencia), Tema.Exito);
-                        else tSensor.PonerEstado("Apagado", Tema.TextoTenue);
-                    }
-                }
-
                 // Limpieza semanal
                 if (!ocupadoSemanal)
                 {
@@ -465,14 +387,6 @@ namespace OptimizadorPC
                     btnProgramar.Enabled = admin;
                     btnQuitar.Enabled = admin;
                 }
-
-                // Liberador de espacio
-                if (e.WindowsOld) tLiberador.PonerEstado("Tienes Windows.old en tu disco", Tema.Aviso);
-                else tLiberador.PonerEstado("No tienes Windows.old ahora mismo", Tema.TextoTenue);
-
-                // Registro
-                if (e.LogTamano >= 0) tRegistro.PonerEstado("Última anotación: " + Fecha(e.LogFecha) + " · " + Util.FormatoTamano(e.LogTamano), Tema.TextoTenue);
-                else tRegistro.PonerEstado("Todavía no hay nada anotado", Tema.TextoTenue);
             }
             finally
             {
@@ -498,18 +412,6 @@ namespace OptimizadorPC
             {
                 tPunto.PonerEstado("Recomendado antes de hacer cambios grandes", Tema.TextoTenue);
             }
-        }
-
-        private static string Frecuencia(int dias)
-        {
-            switch (dias)
-            {
-                case 1: return "cada día";
-                case 7: return "cada semana";
-                case 30: return "cada mes";
-                case 0: return "cuando queda poco espacio";
-            }
-            return "funciona solo";
         }
 
         private static string Fecha(DateTime d)
@@ -757,65 +659,6 @@ namespace OptimizadorPC
             }
         }
 
-        // ------------------------------------------------------------------ 4. Sensor de almacenamiento
-
-        private async void SensorCambiado(object sender, EventArgs e)
-        {
-            if (ocupadoSensor) return;
-            bool activar = swSensor.Activado;
-            if (activar && !Dialogo.Confirmar(FindForm(), "¿Activar el Sensor de almacenamiento?",
-                "Windows borrará solo, cada semana, los archivos temporales y lo que lleve más de 30 días en la papelera. " +
-                "Puedes apagarlo aquí cuando quieras.",
-                "Activar", false))
-            {
-                swSensor.Establecer(false);
-                return;
-            }
-            ocupadoSensor = true;
-            swSensor.Enabled = false;
-            string error = null;
-            try
-            {
-                await Task.Run(() => EscribirSensor(activar));
-                Util.Log("Herramientas: Sensor de almacenamiento " + (activar ? "activado (semanal, temporales y papelera de más de 30 días)" : "apagado"));
-            }
-            catch (Exception ex)
-            {
-                error = ex.Message;
-                Util.Log("Herramientas: no se pudo cambiar el Sensor de almacenamiento: " + ex);
-            }
-            ocupadoSensor = false;
-            if (IsDisposed) return;
-            swSensor.Enabled = true;
-            if (error != null)
-            {
-                swSensor.Establecer(!activar);
-                Dialogo.Error(FindForm(), "No se pudo cambiar el Sensor de almacenamiento",
-                    "Prueba a hacerlo desde Configuración > Sistema > Almacenamiento.");
-            }
-            RefrescarEstados();
-        }
-
-        private static void EscribirSensor(bool activar)
-        {
-            using (RegistryKey k = Registry.CurrentUser.CreateSubKey(ClaveSensor))
-            {
-                if (k == null) throw new InvalidOperationException("No se pudo abrir el registro.");
-                if (activar)
-                {
-                    k.SetValue("01", 1, RegistryValueKind.DWord);
-                    k.SetValue("2048", 7, RegistryValueKind.DWord);
-                    k.SetValue("04", 1, RegistryValueKind.DWord);
-                    k.SetValue("08", 1, RegistryValueKind.DWord);
-                    k.SetValue("256", 30, RegistryValueKind.DWord);
-                }
-                else
-                {
-                    k.SetValue("01", 0, RegistryValueKind.DWord);
-                }
-            }
-        }
-
         // ------------------------------------------------------------------ 5. Limpieza semanal
 
         private async void ProgramarTarea()
@@ -916,35 +759,6 @@ namespace OptimizadorPC
             {
                 ocupadoSemanal = false;
                 if (!IsDisposed) RefrescarEstados();
-            }
-        }
-
-        // ------------------------------------------------------------------ 6 y 7. Herramientas de Windows y registro
-
-        private void AbrirLiberador()
-        {
-            if (!Util.Abrir(Util.RutaSistema("cleanmgr.exe"), "/d " + Sistema.LetraSistema.TrimEnd(':')))
-            {
-                Dialogo.Error(FindForm(), "No se pudo abrir el Liberador", "Búscalo en el menú Inicio como “Liberador de espacio en disco”.");
-                return;
-            }
-            Util.Log("Herramientas: abierto el Liberador de espacio de Windows");
-            Dialogo.Info(FindForm(), "Se está abriendo el Liberador",
-                "Cuando termine de calcular, pulsa “Limpiar archivos del sistema”. Después marca “Instalaciones anteriores de Windows” " +
-                "(si aparece) y pulsa Aceptar.");
-        }
-
-        private void AbrirRegistro()
-        {
-            string ruta = Util.ArchivoLog;
-            if (!File.Exists(ruta))
-            {
-                Dialogo.Info(FindForm(), "Todavía no hay nada anotado", "Cuando el optimizador haga algo, lo verás aquí.");
-                return;
-            }
-            if (!Util.Abrir(Util.RutaSistema("notepad.exe"), "\"" + ruta + "\""))
-            {
-                Dialogo.Error(FindForm(), "No se pudo abrir el registro", "El archivo está en " + ruta);
             }
         }
 
